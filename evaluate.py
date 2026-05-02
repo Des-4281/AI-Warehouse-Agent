@@ -18,15 +18,16 @@ def parse_args():
     parser.add_argument("--orders", type=int, default=3)
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--model-path", type=str, default="models/ppo_warehouse")
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-baselines", action="store_true")
     return parser.parse_args()
 
 
-def run_episodes(policy, env_kwargs: dict, n_episodes: int) -> dict:
+def run_episodes(policy, env_kwargs: dict, n_episodes: int, seed: int = 42) -> dict:
     results = defaultdict(list)
 
-    for ep in range(n_episodes):
-        env = SmartWarehouseEnv(**env_kwargs, seed=ep)
+    for _ in range(n_episodes):
+        env = SmartWarehouseEnv(**env_kwargs, seed=seed)
         obs, _ = env.reset()
         done = False
 
@@ -89,7 +90,7 @@ def main():
     print(f"\nEvaluating over {args.episodes} episodes  "
           f"(grid={args.grid_size}, orders={args.orders})")
 
-    results = run_episodes(ppo_policy, env_kwargs, args.episodes)
+    results = run_episodes(ppo_policy, env_kwargs, args.episodes, args.seed)
     summarize("PPO (trained)", results)
 
     if not args.no_baselines:
@@ -98,7 +99,7 @@ def main():
             ("Greedy baseline", lambda obs, env: greedy_action(env)),
             ("Random baseline", lambda obs, env: random_action(env)),
         ]:
-            results = run_episodes(fn, env_kwargs, args.episodes)
+            results = run_episodes(fn, env_kwargs, args.episodes, args.seed)
             summarize(name, results)
 
 

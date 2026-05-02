@@ -17,6 +17,7 @@ def parse_args():
     parser.add_argument("--orders", type=int, default=3)
     parser.add_argument("--timesteps", type=int, default=1_000_000)
     parser.add_argument("--n-envs", type=int, default=8)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--model-path", type=str, default="models/ppo_warehouse")
 
     return parser.parse_args()
@@ -32,6 +33,7 @@ def main():
             grid_size=args.grid_size,
             obstacle_density=args.obstacle_density,
             n_orders=args.orders,
+            seed=args.seed,
         )
 
     env = make_vec_env(make_env, n_envs=args.n_envs)
