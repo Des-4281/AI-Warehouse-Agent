@@ -53,7 +53,7 @@ class SmartWarehouseEnv(gym.Env):
         grid_size: int = 8,
         obstacle_density: float = 0.18,
         n_orders: int = 3,
-        dynamic_obstacles: bool = True,
+        dynamic_obstacles: bool = False,
         dynamic_obstacle_count: int = 2,
         max_steps: Optional[int] = None,
         seed: Optional[int] = None,
@@ -74,7 +74,7 @@ class SmartWarehouseEnv(gym.Env):
         self.n_orders = n_orders
         self.dynamic_obstacles = dynamic_obstacles
         self.dynamic_obstacle_count = dynamic_obstacle_count if dynamic_obstacles else 0
-        self.max_steps = max_steps or grid_size * grid_size * max(2, n_orders)
+        self.max_steps = max_steps or grid_size * grid_size * n_orders * 5
         self.rng = np.random.default_rng(seed)
 
         obs_len = (grid_size * grid_size) + 6
@@ -134,25 +134,23 @@ class SmartWarehouseEnv(gym.Env):
             self.agent_pos[1] + col_delta,
         )
 
-        reward = -0.02
+        reward = -0.002
 
         if not self._is_walkable(candidate):
-            reward -= 2.0
+            reward -= 0.1
             self.collisions += 1
             self.invalid_moves += 1
         else:
             self.agent_pos = candidate
 
-            if self.agent_pos not in self.visited:
-                reward += 0.01
-                self.visited.add(self.agent_pos)
+            self.visited.add(self.agent_pos)
 
             new_distance = self._manhattan(self.agent_pos, self._current_target())
 
             if new_distance < old_distance:
-                reward += 0.05
+                reward += 0.01
             elif new_distance > old_distance:
-                reward -= 0.05
+                reward -= 0.01
 
         if (
             not self.carrying
@@ -161,22 +159,22 @@ class SmartWarehouseEnv(gym.Env):
         ):
             self.carrying = True
             picked_up = True
-            reward += 5.0
+            reward += 1.0
 
         if self.carrying and self.agent_pos == self.dropoff_pos:
             self.carrying = False
             delivered = True
             self.current_order_idx += 1
-            reward += 10.0
+            reward += 2.0
 
             if self.current_order_idx >= len(self.orders):
-                reward += 50.0
+                reward += 10.0
 
         terminated = self.current_order_idx >= len(self.orders)
         truncated = self.steps >= self.max_steps
 
         if truncated and not terminated:
-            reward -= 10.0
+            reward -= 1.0
 
         self._update_dynamic_blocks()
 

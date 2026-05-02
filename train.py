@@ -17,7 +17,7 @@ def parse_args():
     parser.add_argument("--orders", type=int, default=3)
     parser.add_argument("--timesteps", type=int, default=200_000)
     parser.add_argument("--n-envs", type=int, default=8)
-    parser.add_argument("--dynamic-obstacles", action="store_true", default=True)
+    parser.add_argument("--dynamic-obstacles", action="store_true", default=False)
     parser.add_argument(
         "--no-dynamic-obstacles",
         dest="dynamic_obstacles",
@@ -47,14 +47,13 @@ def main():
         policy="MlpPolicy",
         env=env,
         verbose=1,
-        learning_rate=3e-4,
-        n_steps=1024,
+        learning_rate=lambda p: 3e-4 * p,
+        n_steps=2048,
         batch_size=256,
         gamma=0.99,
         gae_lambda=0.95,
-        clip_range=0.2,
+        clip_range=0.1,
         ent_coef=0.01,
-        tensorboard_log="runs",
     )
 
     model.learn(total_timesteps=args.timesteps)
