@@ -89,9 +89,10 @@ def run_demo(
         grid_size=int(grid_size),
         obstacle_density=float(obstacle_density),
         n_orders=int(orders),
+        seed=int(seed),
     )
 
-    obs, _ = env.reset(seed=int(seed))
+    obs, _ = env.reset()
 
     model = None
 

@@ -82,7 +82,7 @@ def astar_path(
                 current[1] + delta[1],
             )
 
-            if not is_walkable_for_search(env, neighbor):
+            if not env._is_walkable(neighbor):
                 continue
 
             tentative_g = g_score[current] + 1.0
@@ -96,21 +96,6 @@ def astar_path(
                 heapq.heappush(open_heap, (f_score, neighbor))
 
     return None
-
-
-def is_walkable_for_search(env: SmartWarehouseEnv, pos: Position) -> bool:
-    r, c = pos
-
-    if r < 0 or r >= env.grid_size or c < 0 or c >= env.grid_size:
-        return False
-
-    if env.grid[pos] == SHELF:
-        return False
-
-    if pos in env.dynamic_blocks:
-        return False
-
-    return True
 
 
 def reconstruct_path(

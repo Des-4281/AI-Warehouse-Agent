@@ -27,7 +27,7 @@ def run_episodes(policy, env_kwargs: dict, n_episodes: int) -> dict:
 
     for ep in range(n_episodes):
         env = SmartWarehouseEnv(**env_kwargs, seed=ep)
-        obs, _ = env.reset(seed=ep)
+        obs, _ = env.reset()
         done = False
 
         total_reward = 0.0

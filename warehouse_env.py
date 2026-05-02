@@ -11,13 +11,13 @@ from gymnasium import spaces
 
 Position = Tuple[int, int]
 
-EMPTY = 0
-SHELF = 1
-AGENT = 2
-PICKUP = 3
+EMPTY   = 0
+SHELF   = 1
+AGENT   = 2
+PICKUP  = 3
 DROPOFF = 4
-DYNAMIC_BLOCK = 5
 
+MAX_GRID_VALUE = DROPOFF
 
 ACTION_TO_DELTA: Dict[int, Position] = {
     0: (-1, 0),  # up
@@ -42,8 +42,8 @@ class SmartWarehouseEnv(gym.Env):
     """
     Warehouse fulfillment routing environment.
 
-    The agent starts at the packing station, navigates to item pickup locations,
-    returns each item to the packing station, and repeats until all orders are done.
+    The shelf layout and order locations are fixed at construction time and
+    do not change between episodes. reset() only resets episode state.
     """
 
     metadata = {"render_modes": ["ansi"]}
@@ -53,8 +53,6 @@ class SmartWarehouseEnv(gym.Env):
         grid_size: int = 8,
         obstacle_density: float = 0.18,
         n_orders: int = 3,
-        dynamic_obstacles: bool = False,
-        dynamic_obstacle_count: int = 2,
         max_steps: Optional[int] = None,
         seed: Optional[int] = None,
     ):
@@ -72,8 +70,6 @@ class SmartWarehouseEnv(gym.Env):
         self.grid_size = grid_size
         self.obstacle_density = obstacle_density
         self.n_orders = n_orders
-        self.dynamic_obstacles = dynamic_obstacles
-        self.dynamic_obstacle_count = dynamic_obstacle_count if dynamic_obstacles else 0
         self.max_steps = max_steps or grid_size * grid_size * n_orders * 5
         self.rng = np.random.default_rng(seed)
 
@@ -88,36 +84,31 @@ class SmartWarehouseEnv(gym.Env):
 
         self.action_space = spaces.Discrete(4)
 
-        self.grid = np.zeros((grid_size, grid_size), dtype=np.int32)
-        self.agent_pos: Position = (0, 0)
         self.dropoff_pos: Position = (0, 0)
+        self.grid = np.zeros((grid_size, grid_size), dtype=np.int32)
         self.orders: List[Position] = []
+
+        # Episode state (reset each episode)
+        self.agent_pos: Position = self.dropoff_pos
         self.current_order_idx = 0
         self.carrying = False
         self.steps = 0
         self.collisions = 0
         self.invalid_moves = 0
         self.visited: set[Position] = set()
-        self.dynamic_blocks: set[Position] = set()
+
+        self._generate_valid_layout()
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed=seed)
-
-        if seed is not None:
-            self.rng = np.random.default_rng(seed)
 
         self.steps = 0
         self.collisions = 0
         self.invalid_moves = 0
         self.current_order_idx = 0
         self.carrying = False
-        self.dropoff_pos = (0, 0)
         self.agent_pos = self.dropoff_pos
         self.visited = {self.agent_pos}
-        self.dynamic_blocks = set()
-
-        self._generate_valid_layout()
-        self._update_dynamic_blocks()
 
         return self._get_observation(), self._get_info(False, False)
 
@@ -142,15 +133,14 @@ class SmartWarehouseEnv(gym.Env):
             self.invalid_moves += 1
         else:
             self.agent_pos = candidate
-
             self.visited.add(self.agent_pos)
 
             new_distance = self._manhattan(self.agent_pos, self._current_target())
 
             if new_distance < old_distance:
-                reward += 0.01
+                reward += 0.03
             elif new_distance > old_distance:
-                reward -= 0.01
+                reward -= 0.03
 
         if (
             not self.carrying
@@ -176,8 +166,6 @@ class SmartWarehouseEnv(gym.Env):
         if truncated and not terminated:
             reward -= 1.0
 
-        self._update_dynamic_blocks()
-
         return (
             self._get_observation(),
             float(reward),
@@ -190,16 +178,14 @@ class SmartWarehouseEnv(gym.Env):
         display = self._display_grid()
 
         symbols = {
-            EMPTY: ".",
-            SHELF: "X",
-            AGENT: "A",
-            PICKUP: "P",
+            EMPTY:   ".",
+            SHELF:   "X",
+            AGENT:   "A",
+            PICKUP:  "P",
             DROPOFF: "D",
-            DYNAMIC_BLOCK: "B",
         }
 
         rows = []
-
         for r in range(self.grid_size):
             rows.append(
                 " ".join(symbols[int(display[r, c])] for c in range(self.grid_size))
@@ -260,7 +246,7 @@ class SmartWarehouseEnv(gym.Env):
     def _get_observation(self) -> np.ndarray:
         display = self._display_grid()
 
-        flat_grid = (display.flatten() / DYNAMIC_BLOCK).astype(np.float32)
+        flat_grid = (display.flatten() / MAX_GRID_VALUE).astype(np.float32)
 
         target = self._current_target()
 
@@ -280,10 +266,6 @@ class SmartWarehouseEnv(gym.Env):
 
     def _display_grid(self) -> np.ndarray:
         display = self.grid.copy()
-
-        for block in self.dynamic_blocks:
-            if block != self.agent_pos:
-                display[block] = DYNAMIC_BLOCK
 
         for idx, pickup in enumerate(self.orders):
             if idx >= self.current_order_idx:
@@ -323,9 +305,6 @@ class SmartWarehouseEnv(gym.Env):
         if self.grid[pos] == SHELF:
             return False
 
-        if pos in self.dynamic_blocks:
-            return False
-
         return True
 
     def _reachable_cells(self, start: Position, shelves: set[Position]) -> set[Position]:
@@ -349,40 +328,6 @@ class SmartWarehouseEnv(gym.Env):
                     queue.append(nxt)
 
         return seen
-
-    def _update_dynamic_blocks(self):
-        self.dynamic_blocks = set()
-
-        if not self.dynamic_obstacles or self.dynamic_obstacle_count <= 0:
-            return
-
-        protected = {
-            self.agent_pos,
-            self.dropoff_pos,
-            self._current_target(),
-        }
-
-        protected.update(self.orders)
-
-        candidates = [
-            (r, c)
-            for r in range(self.grid_size)
-            for c in range(self.grid_size)
-            if self.grid[r, c] != SHELF and (r, c) not in protected
-        ]
-
-        if not candidates:
-            return
-
-        count = min(self.dynamic_obstacle_count, len(candidates))
-
-        sampled = self.rng.choice(
-            len(candidates),
-            size=count,
-            replace=False,
-        )
-
-        self.dynamic_blocks = {candidates[i] for i in sampled}
 
     @staticmethod
     def _manhattan(a: Position, b: Position) -> int:
